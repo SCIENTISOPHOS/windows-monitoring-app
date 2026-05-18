@@ -1,199 +1,144 @@
-// Charts
-let cpuChart, memoryChart;
-const cpuHistory = [];
-const MAX_HISTORY = 30;
+// static/js/dashboard.js
+const searchBtn = document.getElementById("searchBtn");
+const cityInput = document.getElementById("cityInput");
+const alertPlaceholder = document.getElementById("alertPlaceholder");
+const mainContent = document.getElementById("mainContent");
 
-// Initialize
-document.addEventListener('DOMContentLoaded', () => {
-    initCharts();
-    updateData()
-    setInterval(updateData, 2000); // Update every 2 seconds
-    updateTime();
-    setInterval(updateTime, 1000); // Update time every second
-});
+let tempChart = null;
 
-// Initialize Charts
-function initCharts() {
-    const ctxCpu = document.getElementById('cpuChart').getContext('2d');
-    cpuChart = new Chart(ctxCpu, {
-        type: 'line',
-        data: {
-            labels: [],
-            datasets: [{
-                label: 'CPU Usage (%)',
-                data: [],
-                borderColor: '#ef5350',
-                backgroundColor: 'rgba(239, 83, 80, 0.1)',
-                borderWidth: 2,
-                fill: true,
-                tension: 0.4,
-                pointRadius: 3,
-                pointBackgroundColor: '#ef5350',
-                pointBorderColor: '#fff',
-                pointBorderWidth: 2
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: true,
-            plugins: {
-                legend: {
-                    display: true,
-                    labels: { color: '#333', font: { size: 12, weight: 'bold' } }
-                },
-                filler: { propagate: true }
-            },
-            scales: {
-                y: {
-                    beginAtZero: true,
-                    max: 100,
-                    ticks: { color: '#666' },
-                    grid: { color: '#e0e0e0' }
-                },
-                x: {
-                    ticks: { color: '#666' },
-                    grid: { color: '#e0e0e0' }
-                }
-            }
-        }
-    });
-
-    const ctxMemory = document.getElementById('memoryChart').getContext('2d');
-    memoryChart = new Chart(ctxMemory, {
-        type: 'doughnut',
-        data: {
-            labels: ['Used', 'Available'],
-            datasets: [{
-                data: [0, 0],
-                backgroundColor: ['#ffa726', '#66bb6a'],
-                borderColor: '#fff',
-                borderWidth: 3
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: true,
-            plugins: {
-                legend: {
-                    position: 'bottom',
-                    labels: { color: '#333', font: { size: 12, weight: 'bold' }, padding: 20 }
-                }
-            }
-        }
-    });
+function showAlert(message, type = "danger") {
+  alertPlaceholder.innerHTML = `
+    <div class="alert alert-${type} alert-dismissible fade show" role="alert">
+      ${message}
+      <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    </div>
+  `;
 }
 
-// Update Data
-function updateData() {
-    fetch('/api/system-info')
-        .then(response => response.json())
-        .then(data => {
-            if (data.error) {
-                console.error('Error:', data.error);
-                return;
-            }
-
-            // CPU
-            document.getElementById('cpu-percent').textContent = data.cpu.percent.toFixed(1) + '%';
-            document.getElementById('cpu-progress').style.width = data.cpu.percent + '%';
-            document.getElementById('cpu-freq').textContent = `Frequency: ${data.cpu.frequency} MHz`;
-            document.getElementById('cpu-cores').textContent = data.cpu.count;
-            document.getElementById('logical-cores').textContent = data.cpu.count_logical;
-            document.getElementById('cpu-frequency').textContent = data.cpu.frequency + ' MHz';
-
-            // Memory
-            const memoryPercent = data.memory.percent;
-            document.getElementById('memory-percent').textContent = memoryPercent.toFixed(1) + '%';
-            document.getElementById('memory-progress').style.width = memoryPercent + '%';
-            const memoryUsedGB = (data.memory.used / (1024 ** 3)).toFixed(2);
-            const memoryTotalGB = (data.memory.total / (1024 ** 3)).toFixed(2);
-            document.getElementById('memory-used').textContent = `${memoryUsedGB} GB / ${memoryTotalGB} GB`;
-            document.getElementById('total-ram').textContent = memoryTotalGB + ' GB';
-
-            // Disk
-            const diskPercent = data.disk.percent;
-            document.getElementById('disk-percent').textContent = diskPercent.toFixed(1) + '%';
-            document.getElementById('disk-progress').style.width = diskPercent + '%';
-            const diskUsedGB = (data.disk.used / (1024 ** 3)).toFixed(2);
-            const diskTotalGB = (data.disk.total / (1024 ** 3)).toFixed(2);
-            document.getElementById('disk-used').textContent = `${diskUsedGB} GB / ${diskTotalGB} GB`;
-            document.getElementById('total-disk').textContent = diskTotalGB + ' GB';
-
-            // Network
-            const bytesSent = (data.network.bytes_sent / (1024 ** 2)).toFixed(2);
-            const bytesRecv = (data.network.bytes_recv / (1024 ** 2)).toFixed(2);
-            document.getElementById('network-status').innerHTML = `<small>Upload: ${bytesSent} MB</small>`;
-            document.getElementById('network-download').innerHTML = `<small>Download: ${bytesRecv} MB</small>`;
-
-            // Boot Time
-            document.getElementById('boot-time').textContent = `Boot: ${data.boot_time}`;
-            document.getElementById('boot-time-full').textContent = data.boot_time;
-
-            // Top Processes
-            updateProcessesList(data.processes);
-
-            // Update CPU Chart
-            updateCpuChart(data.cpu.percent);
-
-            // Update Memory Chart
-            memoryChart.data.datasets[0].data = [
-                data.memory.used / (1024 ** 3),
-                data.memory.available / (1024 ** 3)
-            ];
-            memoryChart.update();
-        })
-        .catch(error => console.error('Fetch error:', error));
-}
-
-// Update CPU Chart
-function updateCpuChart(cpuPercent) {
-    const time = new Date().toLocaleTimeString();
-    
-    cpuHistory.push(cpuPercent);
-    if (cpuHistory.length > MAX_HISTORY) {
-        cpuHistory.shift();
+async function fetchWeather(city) {
+  try {
+    const res = await fetch(`/api/weather?city=${encodeURIComponent(city)}`);
+    if (!res.ok) {
+      const payload = await res.json().catch(()=>({error: 'Unknown error'}));
+      throw new Error(payload.error || payload.message || res.statusText);
     }
-
-    cpuChart.data.labels = cpuHistory.map((_, i) => {
-        if (i % Math.ceil(MAX_HISTORY / 6) === 0) {
-            return new Date(Date.now() - (MAX_HISTORY - i) * 2000).toLocaleTimeString().slice(0, 5);
-        }
-        return '';
-    });
-    cpuChart.data.datasets[0].data = cpuHistory;
-    cpuChart.update();
+    return await res.json();
+  } catch (err) {
+    throw err;
+  }
 }
 
-// Update Processes List
-function updateProcessesList(processes) {
-    const tbody = document.getElementById('processes-list');
-    if (!processes || processes.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="2" class="text-center text-muted">No processes</td></tr>';
-        return;
+function clearUI() {
+  document.getElementById("cityName").textContent = "";
+  document.getElementById("currentDesc").textContent = "";
+  document.getElementById("currentTemp").textContent = "";
+  document.getElementById("feelsLike").textContent = "";
+  document.getElementById("weatherIcon").innerHTML = "";
+  document.getElementById("humidity").textContent = "";
+  document.getElementById("wind").textContent = "";
+  document.getElementById("minmax").textContent = "";
+  document.getElementById("forecastList").innerHTML = "";
+}
+
+function renderCurrent(current) {
+  document.getElementById("cityName").textContent = `${current.city}, ${current.country || ""}`;
+  const weather = current.weather && current.weather[0];
+  document.getElementById("currentDesc").textContent = weather ? capitalize(weather.description) : "";
+  document.getElementById("currentTemp").textContent = current.temp !== undefined ? `${Math.round(current.temp)}°C` : "-";
+  document.getElementById("feelsLike").textContent = current.feels_like !== undefined ? `Feels like ${Math.round(current.feels_like)}°C` : "";
+  if (weather && weather.icon) {
+    const url = `https://openweathermap.org/img/wn/${weather.icon}@2x.png`;
+    document.getElementById("weatherIcon").innerHTML = `<img src="${url}" alt="${weather.description}">`;
+  }
+  document.getElementById("humidity").textContent = current.humidity ? `${current.humidity}%` : "-";
+  document.getElementById("wind").textContent = current.wind_speed ? `${current.wind_speed} m/s` : "-";
+  document.getElementById("minmax").textContent = (current.temp_min !== undefined && current.temp_max !== undefined)
+    ? `${Math.round(current.temp_min)}° / ${Math.round(current.temp_max)}°` : "-";
+}
+
+function renderForecastList(timeseries) {
+  const container = document.getElementById("forecastList");
+  container.innerHTML = "";
+  timeseries.slice(0, 12).forEach(item => {
+    const date = new Date(item.dt * 1000);
+    const hour = date.toLocaleString([], { hour: '2-digit', minute: '2-digit' });
+    const iconUrl = `https://openweathermap.org/img/wn/${item.icon}.png`;
+    const el = document.createElement("div");
+    el.className = "forecast-item me-2";
+    el.innerHTML = `<div class="small text-muted">${hour}</div>
+                    <div><img src="${iconUrl}" alt="${item.desc}"></div>
+                    <div class="fw-bold">${Math.round(item.temp)}°C</div>
+                    <div class="small text-muted">${capitalize(item.desc)}</div>`;
+    container.appendChild(el);
+  });
+}
+
+function capitalize(s) {
+  return s ? s.charAt(0).toUpperCase() + s.slice(1) : "";
+}
+
+function renderTempChart(timeseries) {
+  const labels = timeseries.map(i => {
+    const d = new Date(i.dt * 1000);
+    return d.toLocaleString([], { hour: '2-digit', minute: '2-digit' });
+  });
+  const data = timeseries.map(i => i.temp);
+
+  const ctx = document.getElementById("tempChart").getContext("2d");
+  if (tempChart) {
+    tempChart.data.labels = labels;
+    tempChart.data.datasets[0].data = data;
+    tempChart.update();
+    return;
+  }
+  tempChart = new Chart(ctx, {
+    type: "line",
+    data: {
+      labels,
+      datasets: [{
+        label: "Temperature (°C)",
+        data,
+        borderColor: "#ff7b7b",
+        backgroundColor: "rgba(255,123,123,0.12)",
+        tension: 0.3,
+        pointRadius: 3,
+      }]
+    },
+    options: {
+      responsive: true,
+      scales: {
+        y: { beginAtZero: false }
+      }
     }
-
-    tbody.innerHTML = processes.map(proc => `
-        <tr>
-            <td title="${proc.name}">${proc.name.length > 20 ? proc.name.substring(0, 17) + '...' : proc.name}</td>
-            <td>
-                <span class="badge" style="background-color: ${proc.memory_percent > 50 ? '#ef5350' : proc.memory_percent > 20 ? '#ffa726' : '#66bb6a'}">
-                    ${proc.memory_percent}%
-                </span>
-            </td>
-        </tr>
-    `).join('');
+  });
 }
 
-// Update Time
-function updateTime() {
-    const now = new Date();
-    const timeString = now.toLocaleTimeString('en-US', { 
-        year: 'numeric', 
-        month: '2-digit', 
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit'
-    });
-    document.getElementById('current-time').textContent = timeString;
+async function onSearch() {
+  const city = cityInput.value.trim();
+  if (!city) {
+    showAlert("Please enter a city name.", "warning");
+    return;
+  }
+  searchBtn.disabled = true;
+  try {
+    alertPlaceholder.innerHTML = "";
+    clearUI();
+    const data = await fetchWeather(city);
+    if (data && data.current) {
+      renderCurrent(data.current);
+      renderForecastList(data.forecast.timeseries);
+      renderTempChart(data.forecast.timeseries.slice(0, 16)); // next ~48h (3h intervals)
+      mainContent.style.display = "block";
+    } else {
+      showAlert("No data returned from server.", "warning");
+    }
+  } catch (err) {
+    console.error(err);
+    showAlert(`Error: ${err.message || err}`, "danger");
+  } finally {
+    searchBtn.disabled = false;
+  }
 }
+
+searchBtn.addEventListener("click", onSearch);
+cityInput.addEventListener("keydown", (e) => { if (e.key === "Enter") onSearch(); });
