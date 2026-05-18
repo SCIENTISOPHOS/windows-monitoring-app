@@ -1,82 +1,82 @@
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, jsonify
+import psutil
 import os
-import requests
-from dotenv import load_dotenv
+from datetime import datetime
+import json
 
-load_dotenv()  # charge .env
+app = Flask(__name__)
 
-API_KEY = os.getenv("OPENWEATHER_API_KEY")
-if not API_KEY:
-    raise RuntimeError("Set OPENWEATHER_API_KEY in .env")
+# Configuration
+app.config['JSON_SORT_KEYS'] = False
 
-app = Flask(__name__, static_folder="static", template_folder="templates")
-
-OWM_BASE_CURRENT = "https://api.openweathermap.org/data/2.5/weather"
-OWM_BASE_FORECAST = "https://api.openweathermap.org/data/2.5/forecast"
-
-@app.route("/")
-def index():
-    return render_template("index.html")
-
-@app.route("/api/weather")
-def api_weather():
-    """
-    Proxy endpoint: /api/weather?city=Paris
-    Returns combined current weather + 5-day forecast (3h step) for the city.
-    """
-    city = request.args.get("city")
-    if not city:
-        return jsonify({"error": "Missing 'city' parameter"}), 400
-
-    params_current = {"q": city, "appid": API_KEY, "units": "metric", "lang": "en"}
-    params_forecast = {"q": city, "appid": API_KEY, "units": "metric", "lang": "en", "cnt": 40}
-
+def get_system_info():
+    """Get comprehensive system information"""
     try:
-        r1 = requests.get(OWM_BASE_CURRENT, params=params_current, timeout=10)
-        r1.raise_for_status()
-        current = r1.json()
-
-        r2 = requests.get(OWM_BASE_FORECAST, params=params_forecast, timeout=10)
-        r2.raise_for_status()
-        forecast = r2.json()
-
-        # Simplify forecast: pick time series for chart
-        timeseries = []
-        for item in forecast.get("list", []):
-            timeseries.append({
-                "dt": item["dt"],
-                "dt_txt": item["dt_txt"],
-                "temp": item["main"]["temp"],
-                "icon": item["weather"][0]["icon"],
-                "desc": item["weather"][0]["description"]
-            })
-
-        result = {
-            "current": {
-                "city": current.get("name"),
-                "country": current.get("sys", {}).get("country"),
-                "temp": current.get("main", {}).get("temp"),
-                "feels_like": current.get("main", {}).get("feels_like"),
-                "temp_min": current.get("main", {}).get("temp_min"),
-                "temp_max": current.get("main", {}).get("temp_max"),
-                "humidity": current.get("main", {}).get("humidity"),
-                "wind_speed": current.get("wind", {}).get("speed"),
-                "weather": current.get("weather", []),
+        cpu_percent = psutil.cpu_percent(interval=1)
+        cpu_count = psutil.cpu_count(logical=False)
+        cpu_count_logical = psutil.cpu_count(logical=True)
+        cpu_freq = psutil.cpu_freq().current if psutil.cpu_freq() else 0
+        
+        memory = psutil.virtual_memory()
+        disk = psutil.disk_usage('C:' if os.name == 'nt' else '/')
+        
+        # Network stats
+        net_io = psutil.net_io_counters()
+        
+        # Boot time
+        boot_time = datetime.fromtimestamp(psutil.boot_time()).strftime('%Y-%m-%d %H:%M:%S')
+        
+        # Top processes by memory
+        processes = []
+        for proc in psutil.process_iter(['pid', 'name', 'memory_percent']):
+            try:
+                processes.append({
+                    'name': proc.info['name'],
+                    'pid': proc.info['pid'],
+                    'memory_percent': round(proc.info['memory_percent'], 2)
+                })
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                pass
+        
+        processes = sorted(processes, key=lambda x: x['memory_percent'], reverse=True)[:10]
+        
+        return {
+            'cpu': {
+                'percent': cpu_percent,
+                'count': cpu_count,
+                'count_logical': cpu_count_logical,
+                'frequency': round(cpu_freq, 2)
             },
-            "forecast": {
-                "raw": forecast,
-                "timeseries": timeseries
-            }
+            'memory': {
+                'total': memory.total,
+                'available': memory.available,
+                'used': memory.used,
+                'percent': memory.percent
+            },
+            'disk': {
+                'total': disk.total,
+                'used': disk.used,
+                'free': disk.free,
+                'percent': disk.percent
+            },
+            'network': {
+                'bytes_sent': net_io.bytes_sent,
+                'bytes_recv': net_io.bytes_recv
+            },
+            'boot_time': boot_time,
+            'processes': processes,
+            'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         }
-        return jsonify(result)
-    except requests.HTTPError as e:
-        code = getattr(e.response, "status_code", 500)
-        try:
-            return jsonify({"error": e.response.json()}), code
-        except Exception:
-            return jsonify({"error": str(e)}), code
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        return {'error': str(e)}
 
-if __name__ == "__main__":
-    app.run(debug=True, host="127.0.0.1", port=5000)
+@app.route('/')
+def index():
+    return render_template('index.html')
+
+@app.route('/api/system-info')
+def api_system_info():
+    return jsonify(get_system_info())
+
+if __name__ == '__main__':
+    app.run(debug=True, host='127.0.0.1', port=5000)
