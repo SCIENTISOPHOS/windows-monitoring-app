@@ -1,161 +1,72 @@
-<!DOCTYPE html>
-<html lang="en">
+<!doctype html>
+<html lang="fr">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Windows System Monitor</title>
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.css" rel="stylesheet">
-    <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Weather Dashboard</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
 </head>
 <body>
-    <div class="container-fluid">
-        <!-- Header -->
-        <header class="header mb-4">
-            <div class="row align-items-center">
-                <div class="col-md-6">
-                    <h1><i class="fas fa-desktop"></i> Windows System Monitor</h1>
-                </div>
-                <div class="col-md-6 text-end">
-                    <span class="badge bg-success fs-6"><i class="fas fa-circle"></i> Live Monitoring</span>
-                    <span id="current-time" class="ms-3 fw-bold"></span>
-                </div>
-            </div>
-        </header>
+  <div class="container py-4">
+    <header class="d-flex flex-wrap align-items-center justify-content-between mb-4">
+      <h1 class="h3">Weather Dashboard</h1>
+      <form id="searchForm" class="d-flex" onsubmit="return false;">
+        <input id="cityInput" class="form-control me-2" type="search" placeholder="Enter city (e.g. Paris)" aria-label="Search">
+        <button id="searchBtn" class="btn btn-primary">Search</button>
+      </form>
+    </header>
 
-        <!-- System Info Cards -->
-        <div class="row mb-4">
-            <div class="col-md-3 col-sm-6 mb-3">
-                <div class="card info-card cpu-card">
-                    <div class="card-body">
-                        <i class="fas fa-microchip"></i>
-                        <h5 class="card-title">CPU Usage</h5>
-                        <p class="card-text display-6" id="cpu-percent">0%</p>
-                        <div class="progress" style="height: 10px;">
-                            <div id="cpu-progress" class="progress-bar bg-danger" style="width: 0%"></div>
-                        </div>
-                        <small id="cpu-freq" class="text-muted">Frequency: 0 MHz</small>
-                    </div>
-                </div>
-            </div>
+    <div id="alertPlaceholder"></div>
 
-            <div class="col-md-3 col-sm-6 mb-3">
-                <div class="card info-card memory-card">
-                    <div class="card-body">
-                        <i class="fas fa-memory"></i>
-                        <h5 class="card-title">Memory</h5>
-                        <p class="card-text display-6" id="memory-percent">0%</p>
-                        <div class="progress" style="height: 10px;">
-                            <div id="memory-progress" class="progress-bar bg-warning" style="width: 0%"></div>
-                        </div>
-                        <small id="memory-used" class="text-muted">0 GB / 0 GB</small>
-                    </div>
+    <div id="mainContent" style="display:none;">
+      <div class="row mb-3">
+        <div class="col-md-6">
+          <div class="card mb-3">
+            <div class="card-body">
+              <h5 id="cityName" class="card-title"></h5>
+              <p id="currentDesc" class="text-muted mb-1"></p>
+              <div class="d-flex align-items-end justify-content-between">
+                <div>
+                  <div id="currentTemp" class="display-5 fw-bold"></div>
+                  <div id="feelsLike" class="text-muted"></div>
                 </div>
+                <div id="weatherIcon" class="text-end"></div>
+              </div>
+              <hr>
+              <div class="row">
+                <div class="col-4"><small>Humidity</small><div id="humidity"></div></div>
+                <div class="col-4"><small>Wind</small><div id="wind"></div></div>
+                <div class="col-4"><small>Min / Max</small><div id="minmax"></div></div>
+              </div>
             </div>
+          </div>
 
-            <div class="col-md-3 col-sm-6 mb-3">
-                <div class="card info-card disk-card">
-                    <div class="card-body">
-                        <i class="fas fa-hdd"></i>
-                        <h5 class="card-title">Disk Space</h5>
-                        <p class="card-text display-6" id="disk-percent">0%</p>
-                        <div class="progress" style="height: 10px;">
-                            <div id="disk-progress" class="progress-bar bg-info" style="width: 0%"></div>
-                        </div>
-                        <small id="disk-used" class="text-muted">0 GB / 0 GB</small>
-                    </div>
-                </div>
+          <div class="card">
+            <div class="card-body">
+              <h6>Forecast (next entries)</h6>
+              <div id="forecastList" class="d-flex gap-2 overflow-auto py-2"></div>
             </div>
-
-            <div class="col-md-3 col-sm-6 mb-3">
-                <div class="card info-card network-card">
-                    <div class="card-body">
-                        <i class="fas fa-network-wired"></i>
-                        <h5 class="card-title">Network</h5>
-                        <p class="card-text" id="network-status"><small>Upload: 0 MB</small></p>
-                        <p class="card-text" id="network-download"><small>Download: 0 MB</small></p>
-                        <small id="boot-time" class="text-muted">Boot: --:--:--</small>
-                    </div>
-                </div>
-            </div>
+          </div>
         </div>
 
-        <!-- Charts Row -->
-        <div class="row mb-4">
-            <div class="col-lg-6 mb-3">
-                <div class="card chart-card">
-                    <div class="card-header">
-                        <h5 class="mb-0"><i class="fas fa-chart-line"></i> CPU Usage History</h5>
-                    </div>
-                    <div class="card-body">
-                        <canvas id="cpuChart"></canvas>
-                    </div>
-                </div>
+        <div class="col-md-6">
+          <div class="card h-100">
+            <div class="card-body">
+              <h6>Temperature (next hours)</h6>
+              <canvas id="tempChart" height="220"></canvas>
             </div>
-
-            <div class="col-lg-6 mb-3">
-                <div class="card chart-card">
-                    <div class="card-header">
-                        <h5 class="mb-0"><i class="fas fa-chart-pie"></i> Memory Distribution</h5>
-                    </div>
-                    <div class="card-body">
-                        <canvas id="memoryChart"></canvas>
-                    </div>
-                </div>
-            </div>
+          </div>
         </div>
-
-        <!-- System Info -->
-        <div class="row mb-4">
-            <div class="col-lg-6 mb-3">
-                <div class="card info-card">
-                    <div class="card-header">
-                        <h5 class="mb-0"><i class="fas fa-info-circle"></i> System Information</h5>
-                    </div>
-                    <div class="card-body">
-                        <div class="row">
-                            <div class="col-6">
-                                <p><strong>CPU Cores:</strong> <span id="cpu-cores">-</span></p>
-                                <p><strong>Total RAM:</strong> <span id="total-ram">-</span></p>
-                                <p><strong>Total Disk:</strong> <span id="total-disk">-</span></p>
-                            </div>
-                            <div class="col-6">
-                                <p><strong>Boot Time:</strong> <span id="boot-time-full">-</span></p>
-                                <p><strong>Logical Cores:</strong> <span id="logical-cores">-</span></p>
-                                <p><strong>CPU Frequency:</strong> <span id="cpu-frequency">-</span></p>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <div class="col-lg-6 mb-3">
-                <div class="card info-card">
-                    <div class="card-header">
-                        <h5 class="mb-0"><i class="fas fa-list"></i> Top Processes by Memory</h5>
-                    </div>
-                    <div class="card-body" style="max-height: 300px; overflow-y: auto;">
-                        <table class="table table-sm table-hover">
-                            <thead>
-                                <tr>
-                                    <th>Process</th>
-                                    <th>Memory %</th>
-                                </tr>
-                            </thead>
-                            <tbody id="processes-list">
-                                <tr><td colspan="2" class="text-center text-muted">Loading...</td></tr>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
-        </div>
+      </div>
     </div>
 
-    <!-- Scripts -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/js/bootstrap.bundle.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
-    <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+    <footer class="text-center text-muted small mt-4">
+      Data provided by OpenWeatherMap
+    </footer>
+  </div>
+
+<script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
 </body>
 </html>
